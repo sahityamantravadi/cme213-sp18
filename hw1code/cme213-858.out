@@ -1,0 +1,47 @@
+The master node of this job is gpu-202-1
+This job runs on the following nodes:
+gpu-202-1
+Starting at Mon Apr 23 16:15:30 PDT 2018
+Running on hosts: gpu-202-1
+Running on 1 nodes.
+Running on 24 processors.
+Current working directory is /home/smantra/hw1code
+
+Output from code
+----------------
+Parallel
+Sum Even: 757361650
+Sum Odd: 742539102
+Time: 0.042428
+Serial
+Sum Even: 757361650
+Sum Odd: 742539102
+Time: 0.151811
+tests_q2.cpp:92:Test1	TEST PASSED.
+tests_q2.cpp:109:Test2	TEST PASSED.
+tests_q2.cpp:121:Test3	TEST PASSED.
+tests_q2.cpp:140:Test4	TEST PASSED.
+tests_q2.cpp:156:Test5	TEST PASSED.
+Serial Radix Sort is correct
+Parallel Radix Sort is correct
+stl: 0.435045
+serial radix: 0.190548
+parallel radix: 0.0820792
+tests_q2.cpp:92:Test1	TEST PASSED.
+tests_q2.cpp:109:Test2	TEST PASSED.
+tests_q2.cpp:121:Test3	TEST PASSED.
+tests_q2.cpp:140:Test4	TEST PASSED.
+tests_q2.cpp:156:Test5	TEST PASSED.
+Serial Radix Sort is correct
+Parallel Radix Sort is correct
+stl: 0.42574
+serial radix: 0.190457
+parallel radix: 0.0823995
+Run parallel radix for 1,2,4,8,16,32,64 threads
+1 threads: 0.217733
+2 threads: 0.124531
+4 threads: 0.0789778
+8 threads: 0.058296
+16 threads: 0.0581164
+32 threads: 0.0586814
+64 threads: 0.0625819
