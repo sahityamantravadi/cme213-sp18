@@ -17,12 +17,20 @@
 // returns true if the char is not a lowercase letter
 struct isnot_lowercase_alpha : thrust::unary_function<unsigned char, bool> {
     // TODO
+    __host__ __device__
+    bool operator() (unsigned char l) {
+        return (!(l >= 'a' && l <= 'z'));
+    }
 };
 
 // convert an uppercase letter into a lowercase one
 // do not use the builtin C function or anything from boost, etc.
 struct upper_to_lower : thrust::unary_function<unsigned char, unsigned char> {
     // TODO
+    __host__ __device__
+    unsigned char operator() (unsigned char l) {
+        return (l + 32);
+    }
 };
 
 // apply a shift with appropriate wrapping
