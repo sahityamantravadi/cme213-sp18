@@ -196,7 +196,6 @@ int main(int argc, char** argv) {
 
     std::cout << "\nBefore ciphering!" << std::endl << std::endl;
     std::vector<double> letterFreqGpu = getLetterFrequencyGpu(text_clean);
-    std::cout << "did gpu freq" << std::endl;
     std::vector<double> letterFreqCpu = getLetterFrequencyCpu(text);
     bool success = true;
     EXPECT_VECTOR_EQ_EPS(letterFreqCpu, letterFreqGpu, 1e-14, &success);
