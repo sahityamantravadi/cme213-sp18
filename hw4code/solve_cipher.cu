@@ -19,6 +19,18 @@
 struct apply_shift : thrust::binary_function<unsigned char, int,
         unsigned char> {
     // TODO
+    __host__ __device__
+    apply_shift(thrust::device_ptr<unsigned int> shift_amt, int period) : shift_amt_(shift_amt),
+                                                                          period_(period)
+    __host__ __device__
+    unsigned char operator() (const unsigned char &l, const unsigned int pos) {
+        unsigned char shift_char = l + shift_amt_[pos % period_];
+        return shift_char;
+    }
+    
+    private:
+        thrust::device_ptr<unsigned int> shift_amt_;
+        int period_;
 };
 
 int main(int argc, char** argv) {
@@ -62,6 +74,12 @@ int main(int argc, char** argv) {
             // TODO: Use thrust to compute the number of characters that match
             // when shifting text_clean by shift_idx.
             int numMatches = 0; // = ?  TODO
+            numMatches = thrust::inner_product(text_clean.begin(),
+                                               text_clean.end() - shift_idx,
+                                               text_clean.begin() + shift_idx,
+                                               0,
+                                               thrust::plus<int>(),
+                                               thrust::equal_to<int>());
 
             double ioc = numMatches /
                          static_cast<double>((text_clean.size() - shift_idx) / 26.);
@@ -100,6 +118,7 @@ int main(int argc, char** argv) {
     // analyses on text_copy to find the shift which aligns the most common
     // character in text_copy with the character 'e'. Fill up the
     // dShifts vector with the correct shifts.
+
 
     std::cout << "\nEncryption key: ";
 
