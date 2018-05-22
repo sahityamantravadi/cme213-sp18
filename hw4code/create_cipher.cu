@@ -29,7 +29,10 @@ struct upper_to_lower : thrust::unary_function<unsigned char, unsigned char> {
     // TODO
     __host__ __device__
     unsigned char operator() (unsigned char l) {
-        return (l + 32);
+        if (l >= 'A' && l <= 'Z')
+            return (l + 32);
+        else
+            return l;
     }
 };
 
@@ -37,6 +40,20 @@ struct upper_to_lower : thrust::unary_function<unsigned char, unsigned char> {
 struct apply_shift : thrust::binary_function<unsigned char, int,
         unsigned char> {
     // TODO
+    __host__ __device__
+    apply_shift(thrust::device_ptr<unsigned int> shift_amt, int period) : shift_amt_(shift_amt),
+                                                                       period_(period)
+    {}
+
+    __host__ __device__
+    unsigned char operator() (const unsigned char &l, const unsigned int pos) {
+        unsigned char shift_char = l + shift_amt[pos % period_];
+        return shift_char
+    }
+    
+    private:
+        thrust::device_ptr<unsigned int> shift_amt_;
+        int period_;
 };
 
 // Returns a vector with the top 5 letter frequencies in text.
@@ -77,6 +94,41 @@ std::vector<double> getLetterFrequencyGpu(
     // in the text.
 
     // TODO calculate letter frequency
+    thrust::device_vector<unsigned char> text_chars = text;
+    thrust::sort(thrust::device, text_chars.begin(), text_chars.end());
+    
+    int num_bins = thrust::inner_product(thrust::device,
+                                         text_chars.begin(),
+                                         text_chars.end() - 1,
+                                         text_chars.begin() + 1,
+                                         1,
+                                         thrust::plus<int>(),
+                                         thrust::not_equal_to<int>());
+     thrust::device_vector<unsigned char> keys(num_bins);
+     thrust::device_vector<double> freqs(1.0/(double)text.size());
+     
+     freq_alpha_lower.resize(num_bins);
+
+     thrust::reduce_by_key(thrust::device,
+                           text_chars.begin(),
+                           text_chars.end(),
+                           freqs,
+                           keys.begin(),
+                           freq_alpha_lower.begin());
+     
+     thrust::sort_by_key(thrust::device,
+                         freq_alpha_lower.begin(),
+                         freq_alpha_lower.end(),
+                         keys.begin(),
+                         thrust::greater<double>());
+
+     freq_alpha_lower.resize(min(static_cast<int>(freq_alpha_lower.size()), 5));
+
+     int top = freq_alpha_lower.size();
+     std::cout << "Top " << top << " Letter Frequencies" << std::endl;
+     std::cout << "-------------" << std::endl;
+     for (unsigned int i = 0; i < top; ++i)
+         printf ("%u %f", i, freq_alpha_lower[i]);
 
     return freq_alpha_lower;
 }
