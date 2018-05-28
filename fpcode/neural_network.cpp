@@ -309,6 +309,10 @@ void parallel_train(NeuralNetwork& nn, const arma::mat& X, const arma::mat& y,
        and therefore goes from 0 to epochs*num_batches */
     int iter = 0;
 
+    // adjust learning rate and regularization for number of processes
+    learning_rate = learning_rate/num_procs;
+    reg = reg/num_procs;
+
     for(int epoch = 0; epoch < epochs; ++epoch) {
         int num_batches = (N + batch_size - 1)/batch_size;
 
@@ -320,6 +324,7 @@ void parallel_train(NeuralNetwork& nn, const arma::mat& X, const arma::mat& y,
              * 3. reduce the coefficient updates and broadcast to all nodes with `MPI_Allreduce()'
              * 4. update local network coefficient at each node
              */
+
 
             if(print_every <= 0) {
                 print_flag = batch == 0;

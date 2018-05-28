@@ -32,12 +32,45 @@ int useless_gpu_add_one(int t) {
     return result;
 }
 
+/* GPU kernel for in-place GEMM operation */
+__global__
+void myGEMM_kernel(double* A, double* B, double* C,
+                   double* alpha, double* beta,
+                   int M, int N, int K) {
+    unsigned int row = blockIdx.x * blockDim.x + threadIdx.x;
+    unsigned int col = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (!(row > M || col > N)) {
+        int ij = row + (col * M);
+        double c_ij = C[ij] * beta;
+        
+        for(int k = 0; k < K; ++k) {
+            int ik = row + (k * M);
+            int kj = k + (col * K);
+            double a_ik = A[ik];
+            double b_kj = B[kj];
+            c_ij += alpha * (a_ik + b_kj);
+        }
+
+        C[ij] = c_ij;
+    }
+}
+
 /*
 Routine to perform an in-place GEMM operation, i.e., C := alpha*A*B + beta*C
 */
-int myGEMM(double* A, double* B, double* C, double* alpha, double* beta, int M,
+int myGEMM(double* A, double* B, double* C, double alpha, double beta, int M,
            int N, int K) {
     /* TODO: Write an efficient GEMM implementation on GPU */
+    unsigned int num_threads = 192;
+    unsigned int thr_x = 32;
+    unsigned int thr_y = (num_threads + thr_x - 1) / thr_x;
+    dim3 threads(thr_x, thr_y);
 
+    unsigned int blk_x = (M + thr_x - 1) / thr_x;
+    unsigned int blk_y = (N + thr_y - 1) / thr_y;
+    dim3 blocks(blk_x, blk_y);
+
+    myGEMM_kernel<<< blocks, threads >>>(A, B, C, alpha, beta, M, N, K);
     return 1;
 }
