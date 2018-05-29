@@ -35,35 +35,33 @@ int useless_gpu_add_one(int t) {
 /* GPU kernel for in-place GEMM operation */
 __global__
 void myGEMM_kernel(double* A, double* B, double* C,
-                   double* alpha, double* beta,
+                   double alpha, double beta,
                    int M, int N, int K) {
-    unsigned int row = blockIdx.x * blockDim.x + threadIdx.x;
-    unsigned int col = blockIdx.y * blockDim.y + threadIdx.y;
+    int row = blockIdx.x * blockDim.x + threadIdx.x;
+    int col = blockIdx.y * blockDim.y + threadIdx.y;
 
     if (!(row > M || col > N)) {
-        int ij = row + (col * M);
-        double c_ij = C[ij] * beta;
+        int c_ind = row + (col * M);
+        double dot_prod = 0.0;
         
-        for(int k = 0; k < K; ++k) {
-            int ik = row + (k * M);
-            int kj = k + (col * K);
-            double a_ik = A[ik];
-            double b_kj = B[kj];
-            c_ij += alpha * (a_ik + b_kj);
+        for(int i = 0; i < K; i++) {
+            int a_ind = row + (i * M);
+            int b_ind = i + (col * K);
+            dot_prod += A[a_ind] + B[b_ind];
         }
 
-        C[ij] = c_ij;
+        C[c_ind] = (alpha * dot_prod) + (beta * C[c_ind]);
     }
 }
 
 /*
 Routine to perform an in-place GEMM operation, i.e., C := alpha*A*B + beta*C
 */
-int myGEMM(double* A, double* B, double* C, double alpha, double beta, int M,
+int myGEMM(double* A, double* B, double* C, double* alpha, double* beta, int M,
            int N, int K) {
     /* TODO: Write an efficient GEMM implementation on GPU */
     unsigned int num_threads = 192;
-    unsigned int thr_x = 32;
+    unsigned int thr_x = 16;
     unsigned int thr_y = (num_threads + thr_x - 1) / thr_x;
     dim3 threads(thr_x, thr_y);
 
@@ -71,6 +69,69 @@ int myGEMM(double* A, double* B, double* C, double alpha, double beta, int M,
     unsigned int blk_y = (N + thr_y - 1) / thr_y;
     dim3 blocks(blk_x, blk_y);
 
-    myGEMM_kernel<<< blocks, threads >>>(A, B, C, alpha, beta, M, N, K);
+    myGEMM_kernel<<< blocks, threads >>>(A, B, C, *alpha, *beta, M, N, K);
+
     return 1;
+}
+
+/* GPU kernel for 10-class softmax */
+__global__
+void gpuSoftmax_kernel(double* A, unsigned int num_classes, unsigned int N) {
+    unsigned int col = blockIdx.x*blockDim.x + threadIdx.x;
+
+    if (!(col > N)) {
+        double denominator = 0.0;
+
+        for(unsigned int c = 0; c < num_classes; c++){
+            unsigned int ij = c + (col * num_classes);
+            denominator += exp(A[ij]);
+        }
+
+        for(unsigned int c = 0; c < num_classes; c++){
+            unsigned int ij = c + (col * num_classes);
+            A[ij] = exp(A[ij]) / denominator;
+        }
+    }
+}
+
+/* Routine for 10-class softmax */
+void gpuSoftmax(double* A, unsigned int num_classes, unsigned int N) {
+    unsigned int num_threads = 192;
+    unsigned int thr_x = 32;
+    unsigned int thr_y = (num_threads + thr_x - 1) / thr_x;
+    dim3 threads(thr_x, thr_y);
+
+    unsigned int blk_x = (N + thr_x - 1) / thr_x;
+    unsigned int blk_y = (num_classes + thr_y - 1) / thr_y;
+    dim3 blocks(blk_x, blk_y);
+
+    gpuSoftmax_kernel<<< blocks, threads >>>(A, num_classes, N);
+
+}
+
+/* GPU kernel for in-place element-wise sigmoid */
+__global__
+void gpuSigmoid_kernel(double* A, unsigned int num_neurons, unsigned int N) {
+    unsigned int row = blockIdx.x * blockDim.x + threadIdx.x;
+    unsigned int col = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if(!(col > N || row > num_neurons)) {
+        unsigned int ij = row + (col * num_neurons);
+        A[ij] = 1 / (exp(-1.0 * A[ij]) + 1);
+    }
+}
+
+/* Routine for in-place element-wise sigmoid */
+void gpuSigmoid(double* A, unsigned int num_neurons, unsigned int N) {
+    unsigned int num_threads = 192;
+    unsigned int thr_x = 32;
+    unsigned int thr_y = (num_threads + thr_x - 1) / thr_x;
+    dim3 threads(thr_x, thr_y);
+
+    unsigned int blk_x = (N + thr_x - 1) / thr_x;
+    unsigned int blk_y = (num_neurons + thr_y - 1) / thr_y;
+    dim3 blocks(blk_x, blk_y);
+
+    gpuSigmoid_kernel<<< blocks, threads >>>(A, num_neurons, N);
+
 }
