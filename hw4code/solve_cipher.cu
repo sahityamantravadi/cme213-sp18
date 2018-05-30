@@ -10,6 +10,11 @@
 #include <thrust/iterator/constant_iterator.h>
 #include <thrust/extrema.h>
 
+#include <thrust/execution_policy.h>
+#include <thrust/functional.h>
+#include <thrust/iterator/counting_iterator.h>
+#include <thrust/transform.h>
+
 #include "strided_range_iterator.h"
 
 // You will need to call these functors from thrust functions in the code
@@ -20,8 +25,9 @@ struct apply_shift : thrust::binary_function<unsigned char, int,
         unsigned char> {
     // TODO
     __host__ __device__
-    apply_shift(thrust::device_ptr<unsigned int> shift_amt, int period) : shift_amt_(shift_amt),
+    apply_shift(thrust::device_ptr<int> shift_amt, int period) : shift_amt_(shift_amt),
                                                                           period_(period)
+    {}
     __host__ __device__
     unsigned char operator() (const unsigned char &l, const unsigned int pos) {
         unsigned char shift_char = l + shift_amt_[pos % period_];
@@ -29,7 +35,7 @@ struct apply_shift : thrust::binary_function<unsigned char, int,
     }
     
     private:
-        thrust::device_ptr<unsigned int> shift_amt_;
+        thrust::device_ptr<int> shift_amt_;
         int period_;
 };
 
@@ -118,7 +124,34 @@ int main(int argc, char** argv) {
     // analyses on text_copy to find the shift which aligns the most common
     // character in text_copy with the character 'e'. Fill up the
     // dShifts vector with the correct shifts.
+    for (unsigned int i = 0; i < keyLength; ++i) {
+        strided_range<Iterator> s_it (text_copy.begin() + i, text_copy.end(), keyLength);
 
+        thrust::sort(thrust::device, s_it.begin(), s_it.end());
+        int num_bins = thrust::inner_product(s_it.begin(),
+                                             s_it.end() - 1,
+                                             s_it.begin() + 1,
+                                             1,
+                                             thrust::plus<int>(),
+                                             thrust::not_equal_to<int>());
+        thrust::device_vector<unsigned char> keys (num_bins);
+        thrust::device_vector<double> values (num_bins);
+        
+        thrust::reduce_by_key(thrust::device,
+                              s_it.begin(),
+                              s_it.end(),
+                              thrust::make_constant_iterator(1),
+                              keys.begin(),
+                              values.begin());
+        thrust::sort_by_key(thrust::device,
+                            values.begin(),
+                            values.end(),
+                            keys.begin(),
+                            thrust::greater<double>());
+        unsigned char cipher_char = keys[0] - 'a';
+        unsigned char decipher_char = (('z' - 'a' + 1) - ('e' - 'a') + cipher_char) % ('z' - 'a' + 1);
+        dShifts[i] = -decipher_char;
+    }
 
     std::cout << "\nEncryption key: ";
 
@@ -131,6 +164,13 @@ int main(int argc, char** argv) {
     // take the shifts and transform cipher text back to plain text
     // TODO : transform the cipher text back to the plain text by using the
     // apply_shift functor.
+    thrust::device_ptr<int> dp = &(dShifts[0]);
+    thrust::transform(thrust::device,
+                      text_copy.begin(),
+                      text_copy.end(),
+                      thrust::make_counting_iterator(static_cast<int>(0)),
+                      text_clean.begin(),
+                      apply_shift(dp, keyLength));
 
     thrust::host_vector<unsigned char> h_plain_text = text_clean;
 
