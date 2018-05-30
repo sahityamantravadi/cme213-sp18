@@ -148,3 +148,9 @@ void gpuSigmoid(double* A, unsigned int num_neurons, unsigned int N) {
     gpuSigmoid_kernel<<< blocks, threads >>>(A, num_neurons, N);
 
 }
+
+void gpuFeedforward(device_cache &d, int N, NeuralNetwork &nn) {
+    int num_neurons = d.num_neurons;
+    int num_classes = d.num_classes;
+    int num_pixels = d.num_pixels;
+}

@@ -279,6 +279,8 @@ void train(NeuralNetwork& nn, const arma::mat& X, const arma::mat& y,
     }
 }
 
+
+
 /*
  * TODO
  * Train the neural network &nn of rank 0 in parallel. Your MPI implementation
