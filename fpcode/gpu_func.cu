@@ -36,42 +36,55 @@ int useless_gpu_add_one(int t) {
 __global__
 void myGEMM_kernel(double* A, double* B, double* C,
                    double alpha, double beta,
-                   int M, int N, int K) {
+                   int M, int N, int K,
+                   bool AT, bool BT, bool CZ) {
     int row = blockIdx.x * blockDim.x + threadIdx.x;
     int col = blockIdx.y * blockDim.y + threadIdx.y;
 
     if (!(row > M || col > N)) {
         int c_ind = row + (col * M);
         double dot_prod = 0.0;
-        
+        int a_ind;
+        int b_ind;
         for(int i = 0; i < K; i++) {
-            int a_ind = row + (i * M);
-            int b_ind = i + (col * K);
-            dot_prod += A[a_ind] + B[b_ind];
+            if (AT)
+                a_ind = (row*K) + i;
+            else
+                a_ind = row + (i*M);
+            if (BT)
+                b_ind = col + (i*N);
+            else
+                b_ind = i + (col * K);
+            dot_prod += A[a_ind] * B[b_ind];
         }
-
-        C[c_ind] = (alpha * dot_prod) + (beta * C[c_ind]);
+        if (CZ)
+            C[c_ind] = (alpha * dot_prod)
+        else
+            C[c_ind] = (alpha * dot_prod) + (beta * C[c_ind]);
     }
 }
 
 /*
 Routine to perform an in-place GEMM operation, i.e., C := alpha*A*B + beta*C
 */
-int myGEMM(double* A, double* B, double* C, double* alpha, double* beta, int M,
-           int N, int K) {
+int myGEMM(double* A, double* B, double* C,
+           double* alpha, double* beta,
+           int M, int N, int K,
+           bool AT = false, bool BT = false, bool CZ = false) {
     /* TODO: Write an efficient GEMM implementation on GPU */
     unsigned int num_threads = 192;
     unsigned int thr_x = 16;
     unsigned int thr_y = (num_threads + thr_x - 1) / thr_x;
+    
     dim3 threads(thr_x, thr_y);
 
     unsigned int blk_x = (M + thr_x - 1) / thr_x;
     unsigned int blk_y = (N + thr_y - 1) / thr_y;
     dim3 blocks(blk_x, blk_y);
 
-    myGEMM_kernel<<< blocks, threads >>>(A, B, C, *alpha, *beta, M, N, K);
+    myGEMM_kernel<<< blocks, threads >>>(A, B, C, *alpha, *beta, M, N, K, AT, BT, CZ);
 
-    return 1;
+    return 0;
 }
 
 /* GPU kernel for 10-class softmax */
@@ -124,7 +137,7 @@ void gpuSigmoid_kernel(double* A, unsigned int num_neurons, unsigned int N) {
 /* Routine for in-place element-wise sigmoid */
 void gpuSigmoid(double* A, unsigned int num_neurons, unsigned int N) {
     unsigned int num_threads = 192;
-    unsigned int thr_x = 32;
+    unsigned int thr_x = 16;
     unsigned int thr_y = (num_threads + thr_x - 1) / thr_x;
     dim3 threads(thr_x, thr_y);
 
