@@ -47,8 +47,8 @@ int myGEMM(double* A, double* B, double* C,
            bool AT=false, bool BT=false, bool CZ=false);
 
 struct device_cache {
-    double *X, *y;
-    double *a1, *da1, *a2;
+    double *X, *y, *yh;
+    double *A1, *dA1, *A2;
     double *W1, *dW1, *W2, *dW2;
     double *b1, *db1, *b2, *db2;
     int batch_size, num_pixels, num_classes, num_neurons;
@@ -60,9 +60,10 @@ struct device_cache {
     device_cache(int B, int P, int C, int N) : batch_size(B), num_pixels(P), num_classes(C), num_neurons(N) {
         cudaMalloc((void **) &X,    sizeof(double) * B * P);
         cudaMalloc((void **) &y,    sizeof(double) * B * C);
-        cudaMalloc((void **) &a1,   sizeof(double) * B * N);
-        cudaMalloc((void **) &da1,  sizeof(double) * B * N);
-        cudaMalloc((void **) &a2,   sizeof(double) * B * C);
+        cudaMalloc((void **) &yh,   sizeof(double) * B * C);
+        cudaMalloc((void **) &A1,   sizeof(double) * B * N);
+        cudaMalloc((void **) &dA1,  sizeof(double) * B * N);
+        cudaMalloc((void **) &A2,   sizeof(double) * B * C);
         cudaMalloc((void **) &W1,   sizeof(double) * N * P);
         cudaMalloc((void **) &dW1,  sizeof(double) * N * P);
         cudaMalloc((void **) &W2,   sizeof(double) * N * C);
@@ -76,9 +77,10 @@ struct device_cache {
     ~device_cache() {
         cudaFree(X);
         cudaFree(y);
-        cudaFree(a1);
-        cudaFree(da1);
-        cudaFree(a2);
+        cudaFree(yh);
+        cudaFree(A1);
+        cudaFree(dA1);
+        cudaFree(A2);
         cudaFree(W1);
         cudaFree(dW1);
         cudaFree(W2);
