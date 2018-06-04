@@ -47,9 +47,9 @@ int myGEMM(double* A, double* B, double* C,
            bool AT=false, bool BT=false, bool CZ=false);
 
 struct device_cache {
-    double *X, *y, *yh;
-    double *A1, *dA1, *A2;
-    double *W1, *dW1, *W2, *dW2;
+    double *X, *y, *yh, *y_diff;
+    double *A1, *dA1, *A2, *Z1, *Z2, *dZ1;
+    double *W1, *dW1, *W2, *dW2, *dW2_copy;
     double *b1, *db1, *b2, *db2;
     int batch_size, num_pixels, num_classes, num_neurons;
  
@@ -63,7 +63,10 @@ struct device_cache {
         cudaMalloc((void **) &yh,   sizeof(double) * B * C);
         cudaMalloc((void **) &A1,   sizeof(double) * B * N);
         cudaMalloc((void **) &dA1,  sizeof(double) * B * N);
+        cudaMalloc((void **) &Z1,   sizeof(double) * B * N);
+        cudaMalloc((void **) &dZ1,  sizeof(double) * B * N);
         cudaMalloc((void **) &A2,   sizeof(double) * B * C);
+        cudaMalloc((void **) &Z2,   sizeof(double) * B * C);
         cudaMalloc((void **) &W1,   sizeof(double) * N * P);
         cudaMalloc((void **) &dW1,  sizeof(double) * N * P);
         cudaMalloc((void **) &W2,   sizeof(double) * N * C);
@@ -72,6 +75,8 @@ struct device_cache {
         cudaMalloc((void **) &db1,  sizeof(double) * N); 
         cudaMalloc((void **) &b2,   sizeof(double) * C);
         cudaMalloc((void **) &db2,  sizeof(double) * C);
+        cudaMalloc((void **) &y_diff, sizeof(double) * B * C);
+        cudaMalloc((void **) &dW2_copy, sizeof(double) * N * C);
     }
     
     ~device_cache() {
@@ -80,15 +85,20 @@ struct device_cache {
         cudaFree(yh);
         cudaFree(A1);
         cudaFree(dA1);
+        cudaFree(Z1);
+        cudaFree(dZ1);
         cudaFree(A2);
+        cudaFree(Z2);
         cudaFree(W1);
         cudaFree(dW1);
         cudaFree(W2);
         cudaFree(dW2);
+        cudaFree(dW2_copy);
         cudaFree(b1);
         cudaFree(db1);
         cudaFree(b2);
         cudaFree(db2);
+        cudaFree(y_diff);
     }
 };
 
@@ -100,4 +110,5 @@ void gpuHadamard(double *A, double *B, double *C, int M, int N);
 void gpuElementwiseSum(double *A, double *B, double *C, double alpha, double beta, int M, int N);
 void gpuMatrixScalarProduct(double *A, double alpha, int M, int N);
 void gpudSigmoid(double *A, double *B, double *C, int M, int N);
+void gpuCopy(double *A, double *B, int M, int N);
 #endif

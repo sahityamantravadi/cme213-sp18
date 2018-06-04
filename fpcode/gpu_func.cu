@@ -84,7 +84,7 @@ int myGEMM(double* A, double* B, double* C,
     dim3 blocks(blk_x, blk_y);
 
     myGEMM_kernel<<< blocks, threads >>>(A, B, C, *alpha, *beta, M, N, K, AT, BT, CZ);
-
+    check_launch("myGEMM_kernel");
     return 0;
 }
 
@@ -120,7 +120,7 @@ void gpuSoftmax(double* A, unsigned int num_classes, unsigned int N) {
     dim3 blocks(blk_x, blk_y);
 
     gpuSoftmax_kernel<<< blocks, threads >>>(A, num_classes, N);
-
+    check_launch("gpuSoftmax_kernel");
 }
 
 /* GPU kernel for in-place element-wise sigmoid */
@@ -130,8 +130,8 @@ void gpuSigmoid_kernel(double* A, unsigned int num_neurons, unsigned int N) {
     unsigned int col = blockIdx.y * blockDim.y + threadIdx.y;
 
     if(!(col > N || row > num_neurons)) {
-        unsigned int ij = row + (col * num_neurons);
-        A[ij] = (double) 1.0 / (double)(exp(-1.0 * A[ij]) + 1.0);
+        int ij = row + (col * num_neurons);
+        A[ij] = (double) 1.0 / (double)(1.0 + exp(-1.0 * A[ij]));
     }
 }
 
@@ -147,7 +147,7 @@ void gpuSigmoid(double* A, unsigned int num_neurons, unsigned int N) {
     dim3 blocks(blk_x, blk_y);
 
     gpuSigmoid_kernel<<< blocks, threads >>>(A, num_neurons, N);
-
+    check_launch("gpuSigmoid_kernel");
 }
 
 /* GPU kernel for summing rows of matrix A. Places row sums in vector v*/
@@ -176,6 +176,7 @@ void gpuRowSum(double *A, double *v, int M, int N) {
     dim3 blocks(blk_x);
 
     gpuRowSum_kernel<<< blocks, threads >>>(A, v, M, N);
+    check_launch("gpuRowSum_kernel");
 }
 
 /* GPU kernel for broadcasting sum for matrix A with vector v */
@@ -203,6 +204,7 @@ void gpuMatVecSum(double *A, double *v, int M, int N) {
     dim3 blocks(blk_x, blk_y);
 
     gpuMatVecSum_kernel<<< blocks, threads >>>(A, v, M, N);
+    check_launch("gpuMatVecSum_kernel");
 }
 
 /* GPU kernel for elementwise Hadamard product */
@@ -229,6 +231,7 @@ void gpuHadamard(double *A, double *B, double *C, int M, int N) {
     dim3 blocks(blk_x, blk_y);
 
     gpuHadamard_kernel<<< blocks, threads >>>(A, B, C, M, N);
+    check_launch("gpuHadamard_kernel");
 }
 
 /* GPU kernel for elementwise matrix sum */
@@ -259,6 +262,7 @@ void gpuElementwiseSum(double *A, double *B, double *C,
     dim3 blocks(blk_x, blk_y);
 
     gpuElementwiseSum_kernel<<< blocks, threads >>>(A, B, C, alpha, beta, M, N);
+    check_launch("gpuElementwiseSum_kernel");
 }
 
 /* GPU kernel for in-place matrix scalar prodcut */
@@ -285,6 +289,7 @@ void gpuMatrixScalarProduct(double *A, double alpha, int M, int N) {
     dim3 blocks(blk_x, blk_y);
 
     gpuMatrixScalarProduct_kernel<<< blocks, threads >>>(A, alpha, M, N);
+    check_launch("gpuMatrixScalarProduct_kernel");
 }
 
 /* GPU kernel for derivative of sigmoid */
@@ -311,5 +316,32 @@ void gpudSigmoid(double *A, double *B, double *C, int M, int N) {
     dim3 blocks(blk_x, blk_y);
 
     gpudSigmoid_kernel<<< blocks, threads >>>(A, B, C, M, N);
+    check_launch("gpudSigmoid");
 }
 
+/** GPU kernel to copy from variable A on device to another variable B on device */
+__global__
+void gpuCopy_kernel(double *A, double *B, int M, int N) {
+    int row = blockIdx.x * blockDim.x + threadIdx.x;
+    int col = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (!(row > M || col > N)) {
+        int ind = row + (M*col);
+        B[ind] = A[ind];
+    }
+}
+
+/* Routine to copy from variable A on device to another variable B on device */
+void gpuCopy(double *A, double *B, int M, int N) {
+    unsigned int num_threads = 192;
+    unsigned int thr_x = 16;
+    unsigned int thr_y = (num_threads + thr_x - 1) / thr_x;
+    dim3 threads(thr_x, thr_y);
+
+    unsigned int blk_x = (N + thr_x - 1) / thr_x;
+    unsigned int blk_y = (M + thr_y - 1) / thr_y;
+    dim3 blocks(blk_x, blk_y);
+
+    gpuCopy_kernel<<< blocks, threads >>>(A, B, M, N);
+    check_launch("gpuCopy_kernel");
+}
