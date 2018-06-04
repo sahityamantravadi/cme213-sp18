@@ -98,12 +98,12 @@ void gpuSoftmax_kernel(double* A, unsigned int num_classes, unsigned int N) {
 
         for(unsigned int c = 0; c < num_classes; c++){
             unsigned int ij = c + (col * num_classes);
-            denominator += exp(A[ij]);
+            denominator += (double) std::exp(A[ij]);
         }
 
         for(unsigned int c = 0; c < num_classes; c++){
             unsigned int ij = c + (col * num_classes);
-            A[ij] = exp(A[ij]) / denominator;
+            A[ij] = (double) std::exp(A[ij]) / denominator;
         }
     }
 }
@@ -131,7 +131,7 @@ void gpuSigmoid_kernel(double* A, unsigned int num_neurons, unsigned int N) {
 
     if(!(col > N || row > num_neurons)) {
         unsigned int ij = row + (col * num_neurons);
-        A[ij] = 1 / (exp(-1.0 * A[ij]) + 1.0);
+        A[ij] = (double) 1.0 / (double)(exp(-1.0 * A[ij]) + 1.0);
     }
 }
 
@@ -311,67 +311,5 @@ void gpudSigmoid(double *A, double *B, double *C, int M, int N) {
     dim3 blocks(blk_x, blk_y);
 
     gpudSigmoid_kernel<<< blocks, threads >>>(A, B, C, M, N);
-}
-
-void gpuFeedforward(device_cache &d, int N) {
-    int num_neurons = d.num_neurons;
-    int num_classes = d.num_classes;
-    int num_pixels = d.num_pixels;
-
-    double one = 1.0;
-    double zero = 0.0;
-    
-    // Computing activation from first layer
-    myGEMM(d.W1, d.X, d.A1, &one, &zero, num_neurons, N, num_pixels, false, false, true);
-    gpuMatVecSum(d.A1, d.b1, num_neurons, N);
-    gpuSigmoid(d.A1, num_neurons, N);
-
-    //Computing activation from second layer
-    myGEMM(d.W2, d.A1, d.A2, &one, &zero, num_classes, N, num_neurons, false, false, true);
-    gpuMatVecSum(d.A2, d.b2, num_classes, N);
-    gpuSoftmax(d.A2, num_classes, N);
-    d.yh = d.A2;
-}
-
-void gpuBackprop(device_cache &d, int N, double regularization, NeuralNetwork &nn, int num_processes) {
-    int num_neurons = d.num_neurons;
-    int num_classes = d.num_classes;
-    int num_pixels = d.num_pixels;
-
-    double one = 1.0;
-    double zero = 0.0;
-    double denom = (double) num_processes * N;
-    double Ninv_pos = 1.0/(denom);
-    double Ninv_neg = -1.0/(denom);
-    double mod_reg = regularization/((double) num_processes);
-
-    double *y_diff;
-    cudaMalloc((void **) &y_diff, sizeof(double) * num_classes * N);
-    gpuElementwiseSum(y_diff, d.y, d.yh, Ninv_neg, Ninv_pos, num_classes, N);
-
-    double *dW2_copy;
-    cudaMalloc((void **) &dW2_copy, sizeof(double) * num_classes * num_neurons);
-    cudaMemcpy(dW2_copy, nn.W[1].memptr(), sizeof(double) * num_classes * num_neurons, cudaMemcpyHostToDevice);
-
-    myGEMM(y_diff, d.A1, dW2_copy, &one, &mod_reg, num_classes, num_neurons, N, false, true, false);
-
-    cudaMemcpy(d.dW2, dW2_copy, sizeof(double) * num_classes * num_neurons, cudaMemcpyDeviceToHost);
-
-    gpuRowSum(y_diff, d.db2, num_classes, N);
-
-    myGEMM(d.W2, y_diff, d.dA1, &one, &zero, num_neurons, N, num_classes, true, false, true);
-
-    double *dZ1;
-    cudaMalloc((void **) &dZ1, sizeof(double) * num_neurons * N);
-    gpudSigmoid(d.dA1, d.A1, dZ1, num_neurons, N);
-
-    myGEMM(dZ1, d.X, d.W1, &one, &mod_reg, num_neurons, num_pixels, N, false, true, false);
-    d.dW1 = d.W1;
-
-    gpuRowSum(d.db1, dZ1, num_neurons, N);
-
-    cudaFree(y_diff);
-    cudaFree(dW2_copy);
-    cudaFree(dZ1);
 }
 

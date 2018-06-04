@@ -281,7 +281,7 @@ void train(NeuralNetwork& nn, const arma::mat& X, const arma::mat& y,
 
 
 
-void gpuFeedforward(device_cache &d, int N) {
+void gpuFeedforward(device_cache &d, int N, NeuralNetwork &nn) {
     int num_neurons = d.num_neurons;
     int num_classes = d.num_classes;
     int num_pixels = d.num_pixels;
@@ -393,8 +393,8 @@ void parallel_train(NeuralNetwork& nn, const arma::mat& X, const arma::mat& y,
     double *y_batch = (double *) malloc(sizeof(double) * num_classes * batch_size);
 
     // adjust learning rate and regularization for number of processes
-    learning_rate = learning_rate/num_procs;
-    reg = reg/num_procs;
+    // learning_rate = learning_rate/num_procs;
+    reg = reg/(double)num_procs;
 
     for(int epoch = 0; epoch < epochs; ++epoch) {
         int num_batches = (N + batch_size - 1)/batch_size;
@@ -427,7 +427,7 @@ void parallel_train(NeuralNetwork& nn, const arma::mat& X, const arma::mat& y,
                     y.colptr(start_point),
                     num_classes * in_proc,
                     MPI_DOUBLE,
-                    y_batch_proc,
+                    y_batch,
                     num_classes * in_proc,
                     MPI_DOUBLE,
                     0,
@@ -489,10 +489,10 @@ void parallel_train(NeuralNetwork& nn, const arma::mat& X, const arma::mat& y,
             ));
 
             //gradient descent
-            nn.W[0] -= learning_rate * arma::mat(h_dW1_l, nn.W[0].n_rows, nn.W[0].n_cols);
-            nn.b[0] -= learning_rate * arma::mat(h_db1_l, nn.b[0].n_rows, nn.b[0].n_cols);
-            nn.W[1] -= learning_rate * arma::mat(h_dW2_l, nn.W[1].n_rows, nn.W[1].n_cols);
-            nn.b[1] -= learning_rate * arms::mat(h_db2_l, nn.b[1].n_rows, nn.b[1].n_cols);
+            nn.W[0] -= learning_rate * arma::mat(host_dW1_l, nn.W[0].n_rows, nn.W[0].n_cols);
+            nn.b[0] -= learning_rate * arma::mat(host_db1_l, nn.b[0].n_rows, nn.b[0].n_cols);
+            nn.W[1] -= learning_rate * arma::mat(host_dW2_l, nn.W[1].n_rows, nn.W[1].n_cols);
+            nn.b[1] -= learning_rate * arma::mat(host_db2_l, nn.b[1].n_rows, nn.b[1].n_cols);
 
             if(print_every <= 0) {
                 print_flag = batch == 0;
@@ -509,6 +509,22 @@ void parallel_train(NeuralNetwork& nn, const arma::mat& X, const arma::mat& y,
             iter++;
         }
     }
+
+    free(host_dW1);
+    free(host_db1);
+    free(host_dW2);
+    free(host_db2);
+
+    free(host_dW1_l);
+    free(host_db1_l);
+    free(host_dW2_l);
+    free(host_db2_l);
+
+    free(X_batch);
+    free(y_batch);
+
+    d.~device_cache();
+
 
     error_file.close();
 }

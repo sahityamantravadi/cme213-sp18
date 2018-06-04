@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --time=24:00:00
+#SBATCH --time=00:10:00
 #SBATCH --partition=gpu
 #SBATCH --qos=normal
 #SBATCH --nodes=1
@@ -36,4 +36,4 @@ echo Output from code
 echo ----------------
 
 # mpirun -np 4 ./main -s -n 1000 -b 800 -l 0.01 -e 20
-mpirun -np 4 ./main -g 4
+mpirun -np 4 ./main -g 3
