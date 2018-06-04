@@ -90,9 +90,14 @@ struct device_cache {
         cudaFree(b2);
         cudaFree(db2);
     }
-}
+};
 
 void gpuSigmoid(double* A, unsigned int num_neurons, unsigned int N);
 void gpuSoftmax(double* A, unsigned int num_classes, unsigned int N);
-
+void gpuRowSum(double *A, double *v, int M, int N);
+void gpuMatVecSum(double *A, double *v, int M, int N);
+void gpuHadamard(double *A, double *B, double *C, int M, int N);
+void gpuElementwiseSum(double *A, double *B, double *C, double alpha, double beta, int M, int N);
+void gpuMatrixScalarProduct(double *A, double alpha, int M, int N);
+void gpudSigmoid(double *A, double *B, double *C, int M, int N);
 #endif
