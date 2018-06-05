@@ -300,7 +300,7 @@ void gpudSigmoid_kernel(double *A, double *B, double *C, int M, int N) {
 
     if (!(row > M || col > N)) {
         int ind = row + (M*col);
-        C[ind] = A[ind] * B[ind] * (1.0 - B[ind]);
+        C[ind] = (double) A[ind] * B[ind] * (1.0 - B[ind]);
     }
 }
 
@@ -317,31 +317,4 @@ void gpudSigmoid(double *A, double *B, double *C, int M, int N) {
 
     gpudSigmoid_kernel<<< blocks, threads >>>(A, B, C, M, N);
     check_launch("gpudSigmoid");
-}
-
-/** GPU kernel to copy from variable A on device to another variable B on device */
-__global__
-void gpuCopy_kernel(double *A, double *B, int M, int N) {
-    int row = blockIdx.x * blockDim.x + threadIdx.x;
-    int col = blockIdx.y * blockDim.y + threadIdx.y;
-
-    if (!(row > M || col > N)) {
-        int ind = row + (M*col);
-        B[ind] = A[ind];
-    }
-}
-
-/* Routine to copy from variable A on device to another variable B on device */
-void gpuCopy(double *A, double *B, int M, int N) {
-    unsigned int num_threads = 192;
-    unsigned int thr_x = 16;
-    unsigned int thr_y = (num_threads + thr_x - 1) / thr_x;
-    dim3 threads(thr_x, thr_y);
-
-    unsigned int blk_x = (N + thr_x - 1) / thr_x;
-    unsigned int blk_y = (M + thr_y - 1) / thr_y;
-    dim3 blocks(blk_x, blk_y);
-
-    gpuCopy_kernel<<< blocks, threads >>>(A, B, M, N);
-    check_launch("gpuCopy_kernel");
 }
