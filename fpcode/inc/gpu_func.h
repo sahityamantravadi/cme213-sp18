@@ -44,7 +44,7 @@ int useless_gpu_add_one(int t);
 int myGEMM(double* A, double* B, double* C,
            double* alpha, double* beta,
            int M, int N, int K,
-           bool AT=false, bool BT=false, bool CZ=false);
+           bool AT=false, bool BT=false);
 
 struct device_cache {
     double *X, *y, *yh, *y_diff;

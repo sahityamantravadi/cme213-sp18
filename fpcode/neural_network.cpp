@@ -286,30 +286,26 @@ void gpuFeedforward(device_cache &d, int N, NeuralNetwork &nn) {
     double zero = 0.0;
     
     // Computing activation from first layer
-    //myGEMM(d.W1, d.X, d.Z1, &one, &zero, num_neurons, N, num_pixels, false, false, true);
-    myGEMM(d.W1, d.X, d.A1, &one, &zero, num_neurons, N, num_pixels, false, false, true);
+    myGEMM(d.W1, d.X, d.A1, &one, &zero, num_neurons, N, num_pixels, false, false);
     //......
     //double* h_b1 = (double *) malloc(sizeof(double) * num_neurons);
     //cudaMemcpy(h_b1, d.b1, sizeof(double) * num_neurons, cudaMemcpyDeviceToHost);
     //double* h_z1 = (double*) malloc(sizeof(double) * num_neurons * N);
-    //cudaMemcpy(h_z1, d.Z1, sizeof(double) * num_neurons * N, cudaMemcpyDeviceToHost);
- 
+    //cudaMemcpy(h_z1, d.A1, sizeof(double) * num_neurons * N, cudaMemcpyDeviceToHost); 
     //for(int i = 0; i < 5; i++){
     //    std::cout << "i: " << i << ", b1: " << h_b1[i] << std::endl;
     //    std::cout << "i: " << i << ", z1: " << h_z1[i] << std::endl;
     //}
     //.......
-    //gpuMatVecSum(d.Z1, d.b1, num_neurons, N);
     gpuMatVecSum(d.A1, d.b1, num_neurons, N);
     //..........
     //double* h_z1 = (double*) malloc(sizeof(double) * num_neurons * N); 
-    //cudaMemcpy(h_z1, d.Z1, sizeof(double) * num_neurons * N, cudaMemcpyDeviceToHost);
+    //cudaMemcpy(h_z1, d.A1, sizeof(double) * num_neurons * N, cudaMemcpyDeviceToHost);
     //for(int i = 0; i < 5; i++){
     //    std::cout << "i: " << i << ", UNsigmoided:" << h_z1[i] << std::endl;
     //}
     //.......... 
     
-    //cudaMemcpy(d.A1, d.Z1, sizeof(double) * num_neurons * N, cudaMemcpyDeviceToDevice);
     gpuSigmoid(d.A1, num_neurons, N);
     
     //...........
@@ -321,11 +317,8 @@ void gpuFeedforward(device_cache &d, int N, NeuralNetwork &nn) {
     //..........
     
     // Computing activation from second layer
-    //myGEMM(d.W2, d.A1, d.Z2, &one, &zero, num_classes, N, num_neurons, false, false, true);
-    myGEMM(d.W2, d.A1, d.A2, &one, &zero, num_classes, N, num_neurons, false, false, true);
-    //gpuMatVecSum(d.Z2, d.b2, num_classes, N);
+    myGEMM(d.W2, d.A1, d.A2, &one, &zero, num_classes, N, num_neurons, false, false);
     gpuMatVecSum(d.A2, d.b2, num_classes, N);
-    //cudaMemcpy(d.A2, d.Z2, sizeof(double) * num_classes * N, cudaMemcpyDeviceToDevice);
     gpuSoftmax(d.A2, num_classes, N);
     cudaMemcpy(d.yh, d.A2, sizeof(double) * num_classes * N, cudaMemcpyDeviceToDevice);
 }
@@ -334,7 +327,7 @@ void gpuBackprop(device_cache &d, int N, int batch_size, double regularization, 
     int num_neurons = d.num_neurons;
     int num_classes = d.num_classes;
     int num_pixels = d.num_pixels;
-
+    regularization = regularization/ (double) num_processes;
     double one = 1.0;
     double zero = 0.0;
     double Ninv_pos = 1.0/(double) batch_size;
@@ -362,14 +355,15 @@ void gpuBackprop(device_cache &d, int N, int batch_size, double regularization, 
 
     //calculate dW2
     cudaMemcpy(d.dW2, d.W2, sizeof(double) * num_classes * num_neurons, cudaMemcpyDeviceToDevice);
-    myGEMM(d.y_diff, d.A1, d.dW2, &one, &regularization, num_classes, num_neurons, N, false, true, false);
+    myGEMM(d.y_diff, d.A1, d.dW2, &one, &regularization, num_classes, num_neurons, N, false, true);
 
     //calculate db2
     gpuRowSum(d.y_diff, d.db2, num_classes, N);
 
 
     //dA1
-    myGEMM(d.W2, d.y_diff, d.dA1, &one, &zero, num_neurons, N, num_classes, true, false, true);
+    myGEMM(d.W2, d.y_diff, d.dA1, &one, &zero, num_neurons, N, num_classes, true, false);
+    
     //.............
     //double* h_A1 = (double*) malloc(sizeof(double) * num_classes * N);
     //cudaMemcpy(h_A1, d.A1, sizeof(double) * num_classes * N, cudaMemcpyDeviceToHost);
@@ -379,8 +373,10 @@ void gpuBackprop(device_cache &d, int N, int batch_size, double regularization, 
     //    std::cout << "i: " << i << ", A1: " << h_A1[i]<< ", dA1: " << h_dA1[i] << std::endl;
     //}
     //.............
+    
     //dZ1
     gpudSigmoid(d.dA1, d.A1, d.dZ1, num_neurons, N);
+    
     //.............
     //double* h_dZ1 = (double*) malloc(sizeof(double) * num_classes * N);
     //cudaMemcpy(h_dZ1, d.dZ1, sizeof(double) * num_classes * N, cudaMemcpyDeviceToHost);
@@ -388,9 +384,10 @@ void gpuBackprop(device_cache &d, int N, int batch_size, double regularization, 
     //    std::cout << "i: " << i << ", dZ1: " << h_dZ1[i] << std::endl;
     //}
     //............
+    
     //calculate dW1
-    myGEMM(d.dZ1, d.X, d.W1, &one, &regularization, num_neurons, num_pixels, N, false, true, false);
     cudaMemcpy(d.dW1, d.W1, sizeof(double) * num_neurons * num_pixels, cudaMemcpyDeviceToDevice);
+    myGEMM(d.dZ1, d.X, d.dW1, &one, &regularization, num_neurons, num_pixels, N, false, true);
     
     //calculate db1
     gpuRowSum(d.dZ1, d.db1, num_neurons, N);
@@ -444,8 +441,7 @@ void parallel_train(NeuralNetwork& nn, const arma::mat& X, const arma::mat& y,
     double *y_batch = (double *) malloc(sizeof(double) * num_classes * batch_size);
 
     // adjust learning rate and regularization for number of processes
-    // learning_rate = learning_rate/num_procs;
-    double mod_reg = reg/(double)num_procs;
+    //double mod_reg = reg/(double)num_procs;
 
     for(int epoch = 0; epoch < epochs; ++epoch) {
         int num_batches = (N + batch_size - 1)/batch_size;
@@ -460,7 +456,7 @@ void parallel_train(NeuralNetwork& nn, const arma::mat& X, const arma::mat& y,
              */
             int batch_start = batch * batch_size;
             int in_proc = std::min(batch_size, N - batch_start)/num_procs;
-
+            
             MPI_SAFE_CALL(
                 MPI_Scatter( 
                     X.colptr(batch_start),
@@ -494,7 +490,7 @@ void parallel_train(NeuralNetwork& nn, const arma::mat& X, const arma::mat& y,
 
             gpuFeedforward(d, in_proc, nn);
 
-            gpuBackprop(d, in_proc, batch_size, mod_reg, nn, num_procs);
+            gpuBackprop(d, in_proc, batch_size, reg, nn, num_procs);
 
             //copy gradients to host
             checkCudaErrors(cudaMemcpy(host_dW1, d.dW1, sizeof(double) * num_pixels * num_neurons, cudaMemcpyDeviceToHost));
@@ -538,33 +534,11 @@ void parallel_train(NeuralNetwork& nn, const arma::mat& X, const arma::mat& y,
                     MPI_SUM,
                     MPI_COMM_WORLD
             ));
-           /* 
-            std::cout << "dW1 1 " << host_dW1_l[0] << std::endl;
-            std::cout << "dW1 25 " << host_dW1_l[24] << std::endl;
-            
-            std::cout << "dW2 1 " << host_dW2_l[0] << std::endl;
-            std::cout << "dW2 25 " << host_dW2_l[24] << std::endl;
-            
-            std::cout << "db1 1 " << host_db1_l[0] << std::endl;
-            std::cout << "db1 25 " << host_db1_l[24] << std::endl;
-            
-            std::cout << "db2 1 " << host_db2_l[0] << std::endl;
-            std::cout << "db2 25 " << host_db2_l[24] << std::endl;
-            */
             //gradient descent
             nn.W[0] = nn.W[0] - learning_rate * arma::mat(host_dW1_red, nn.W[0].n_rows, nn.W[0].n_cols);
-            nn.b[0] = nn.b[0] - learning_rate * arma::mat(host_db1_red, nn.b[0].n_rows, nn.b[0].n_cols);
+            nn.b[0] = nn.b[0] - learning_rate * arma::colvec(host_db1_red, nn.b[0].n_rows, nn.b[0].n_cols);
             nn.W[1] = nn.W[1] - learning_rate * arma::mat(host_dW2_red, nn.W[1].n_rows, nn.W[1].n_cols);
-            nn.b[1] = nn.b[1] - learning_rate * arma::mat(host_db2_red, nn.b[1].n_rows, nn.b[1].n_cols);
-            /*
-            std::cout << "W1 " << nn.W[0][10] << std::endl;
-            
-            std::cout << "W2 " << nn.W[1][10] << std::endl;
-            
-            std::cout << "b1 " << nn.b[0][10] << std::endl;
-            
-            std::cout << "b2 " << nn.b[1][10] << std::endl;
-            */
+            nn.b[1] = nn.b[1] - learning_rate * arma::colvec(host_db2_red, nn.b[1].n_rows, nn.b[1].n_cols);
 
             if(print_every <= 0) {
                 print_flag = batch == 0;
@@ -595,7 +569,7 @@ void parallel_train(NeuralNetwork& nn, const arma::mat& X, const arma::mat& y,
     free(X_batch);
     free(y_batch);
     
-    //d.~device_cache();
+    d.~device_cache();
 
 
     error_file.close();
