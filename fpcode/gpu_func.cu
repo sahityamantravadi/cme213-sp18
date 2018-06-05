@@ -136,8 +136,8 @@ void gpuSigmoid(double* A, unsigned int num_neurons, unsigned int N) {
     unsigned int thr_y = (num_threads + thr_x - 1) / thr_x;
     dim3 threads(thr_x, thr_y);
 
-    unsigned int blk_x = (N + thr_x - 1) / thr_x;
-    unsigned int blk_y = (num_neurons + thr_y - 1) / thr_y;
+    unsigned int blk_x = (num_neurons + thr_x - 1) / thr_x;
+    unsigned int blk_y = (N + thr_y - 1) / thr_y;
     dim3 blocks(blk_x, blk_y);
 
     gpuSigmoid_kernel<<< blocks, threads >>>(A, num_neurons, N);
@@ -189,8 +189,8 @@ void gpuMatVecSum(double *A, double *v, int M, int N) {
     unsigned int thr_y = (num_threads + thr_x - 1) / thr_x;
     dim3 threads(thr_x, thr_y);
 
-    unsigned int blk_x = (N + thr_x - 1) / thr_x;
-    unsigned int blk_y = (M + thr_y - 1) / thr_y;
+    unsigned int blk_x = (M + thr_x - 1) / thr_x;
+    unsigned int blk_y = (N + thr_y - 1) / thr_y;
     dim3 blocks(blk_x, blk_y);
     gpuMatVecSum_kernel<<< blocks, threads >>>(A, v, M, N);
     check_launch("gpuMatVecSum_kernel");
@@ -201,8 +201,8 @@ __global__
 void gpuElementwiseSum_kernel(double *A, double *B, double *C,
                               double alpha, double beta,
                               int M, int N) {
-    int row = blockIdx.x * blockDim.x + threadIdx.x;
-    int col = blockIdx.y * blockDim.y + threadIdx.y;
+    int col = blockIdx.x * blockDim.x + threadIdx.x;
+    int row = blockIdx.y * blockDim.y + threadIdx.y;
     
     if (row < M && col < N) {
         int ind = row + (M*col);
@@ -246,8 +246,8 @@ void gpudSigmoid(double *A, double *B, double *C, int M, int N) {
     unsigned int thr_y = (num_threads + thr_x - 1) / thr_x;
     dim3 threads(thr_x, thr_y);
 
-    unsigned int blk_x = (N + thr_x - 1) / thr_x;
-    unsigned int blk_y = (M + thr_y - 1) / thr_y;
+    unsigned int blk_x = (M + thr_x - 1) / thr_x;
+    unsigned int blk_y = (N + thr_y - 1) / thr_y;
     dim3 blocks(blk_x, blk_y);
 
     gpudSigmoid_kernel<<< blocks, threads >>>(A, B, C, M, N);

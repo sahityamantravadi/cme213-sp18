@@ -323,15 +323,15 @@ void gpuFeedforward(device_cache &d, int N, NeuralNetwork &nn) {
     cudaMemcpy(d.yh, d.A2, sizeof(double) * num_classes * N, cudaMemcpyDeviceToDevice);
 }
 
-void gpuBackprop(device_cache &d, int N, int batch_size, double regularization, NeuralNetwork &nn, int num_processes) {
+void gpuBackprop(device_cache &d, int N, double regularization, NeuralNetwork &nn, int num_processes) {
     int num_neurons = d.num_neurons;
     int num_classes = d.num_classes;
     int num_pixels = d.num_pixels;
-    regularization = regularization/ (double) num_processes;
+    double reg = regularization/ (double) num_processes;
     double one = 1.0;
     double zero = 0.0;
-    double Ninv_pos = 1.0/(double) batch_size;
-    double Ninv_neg = -1.0/(double) batch_size;
+    double Ninv_pos = 1.0/((double) N * (double) num_processes);
+    double Ninv_neg = -1.0*Ninv_pos;
 
     //find difference between labels and predictions
     //............
@@ -355,7 +355,7 @@ void gpuBackprop(device_cache &d, int N, int batch_size, double regularization, 
 
     //calculate dW2
     cudaMemcpy(d.dW2, d.W2, sizeof(double) * num_classes * num_neurons, cudaMemcpyDeviceToDevice);
-    myGEMM(d.y_diff, d.A1, d.dW2, &one, &regularization, num_classes, num_neurons, N, false, true);
+    myGEMM(d.y_diff, d.A1, d.dW2, &one, &reg, num_classes, num_neurons, N, false, true);
 
     //calculate db2
     gpuRowSum(d.y_diff, d.db2, num_classes, N);
@@ -387,7 +387,7 @@ void gpuBackprop(device_cache &d, int N, int batch_size, double regularization, 
     
     //calculate dW1
     cudaMemcpy(d.dW1, d.W1, sizeof(double) * num_neurons * num_pixels, cudaMemcpyDeviceToDevice);
-    myGEMM(d.dZ1, d.X, d.dW1, &one, &regularization, num_neurons, num_pixels, N, false, true);
+    myGEMM(d.dZ1, d.X, d.dW1, &one, &reg, num_neurons, num_pixels, N, false, true);
     
     //calculate db1
     gpuRowSum(d.dZ1, d.db1, num_neurons, N);
@@ -490,7 +490,7 @@ void parallel_train(NeuralNetwork& nn, const arma::mat& X, const arma::mat& y,
 
             gpuFeedforward(d, in_proc, nn);
 
-            gpuBackprop(d, in_proc, batch_size, reg, nn, num_procs);
+            gpuBackprop(d, in_proc, reg, nn, num_procs);
 
             //copy gradients to host
             checkCudaErrors(cudaMemcpy(host_dW1, d.dW1, sizeof(double) * num_pixels * num_neurons, cudaMemcpyDeviceToHost));
@@ -570,7 +570,6 @@ void parallel_train(NeuralNetwork& nn, const arma::mat& X, const arma::mat& y,
     free(y_batch);
     
     d.~device_cache();
-
 
     error_file.close();
 }

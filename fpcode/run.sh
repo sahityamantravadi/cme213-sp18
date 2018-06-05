@@ -36,4 +36,4 @@ echo Output from code
 echo ----------------
 
 # mpirun -np 4 ./main -s -n 1000 -b 800 -l 0.01 -e 20
-mpirun -np 4 ./main -g 3
+mpirun -np 4 ./main -g 2
