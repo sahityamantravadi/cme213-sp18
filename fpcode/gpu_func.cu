@@ -6,6 +6,7 @@
 #include "cublas_v2.h"
 #include <cmath>
 
+#define BLOCK_SIZE 32
 
 __global__
 void device_add_one(int* d_result, int t) {
@@ -88,8 +89,7 @@ Routine to perform an in-place GEMM operation, i.e., C := alpha*A*B + beta*C
 */
 
 __global__
-template<int BLOCK_SIZE>
-void shared_myGEMM_kernel(const double* __restrict__ A, const double* __restrict__ B, double* __restrict__ C,
+void shared_myGEMM_kernel(double* __restrict__ A, double* __restrict__ B, double* __restrict__ C,
                           double alpha, double beta,
                           int M, int N, int K,
                           bool AT, bool BT) {
@@ -103,30 +103,43 @@ void shared_myGEMM_kernel(const double* __restrict__ A, const double* __restrict
     double C_aggr = 0.0;
     unsigned int i_lim = (K + BLOCK_SIZE - 1)/BLOCK_SIZE;
     for (unsigned int i = 0; i < i_lim; ++i) {
-       //fill in shared memory
-       if ((BLOCK_SIZE * i) < (K - col)) {
-           unsigned int a_ind = M * BLOCK_SIZE * i + (col * M) + BLOCK_SIZE * x_block + row;
-           A_shared[row][col] = A[a_ind];
-       }
-       else {
-           A_shared[row][col] = 0.0;
-       }
-       if ((BLOCK_SIZE * i) < (K - row)) {
-           unsigned int b_ind = K * BLOCK_SIZE * y_block + (col * K) + BLOCK_SIZE * i + row;
-           B_shared[row][col] = B[b_ind];
-       }
-       else{
-           B_shared[row][col] = 0.0;
-       }
+        //fill in shared memory
+        if (AT && ((BLOCK_SIZE * i) < (K - col))) {
+            double *A_part = A + (K + BLOCK_SIZE * x_block + BLOCK_SIZE * i);
+            unsigned int a_ind = (row * K) + col;
+            A_shared[row][col] = A_part[a_ind];
+        }
+        else if ((BLOCK_SIZE * i) < (K - col)) {
+            double *A_part = A + (M * BLOCK_SIZE * i + BLOCK_SIZE * x_block);
+            unsigned int a_ind = (col * M) + row;
+            A_shared[row][col] = A_part[a_ind];
+        }
+        else {
+            A_shared[row][col] = 0.0;
+        }
 
-       __syncthreads();
+        if (BT && ((BLOCK_SIZE * i) < (K - row))) {
+            double *B_part = B + (N * BLOCK_SIZE * i + BLOCK_SIZE * y_block);
+            unsigned int b_ind = (row * N) + col;
+            B_shared[row][col] = B_part[b_ind];
+        }
+        else if ((BLOCK_SIZE * i) < (K-row)) {
+            double *B_part = B + (K * BLOCK_SIZE * y_block + BLOCK_SIZE * i);
+            unsigned int b_ind = (col * K) +  row;
+            B_shared[row][col] = B_part[b_ind];
+        }
+        else{
+            B_shared[row][col] = 0.0;
+        }
 
-       //matrix multiplication
-       for (unsigned int j = 0; j < BLOCK_SIZE; ++j) {
-           C_aggr += A_shared[row][j] * B_shared[j][col];
-       }
-       
-       __syncthreads();
+        __syncthreads();
+
+        //matrix multiplication
+        for (unsigned int j = 0; j < BLOCK_SIZE; ++j) {
+            C_aggr += A_shared[row][j] * B_shared[j][col];
+        }
+
+        __syncthreads();
     }
 
     C_aggr *= alpha;
@@ -154,7 +167,7 @@ int myGEMM(double *A, double *B, double *C,
     dim3 grid_dims (blk_x, blk_y);
 
     cudaDeviceSetSharedMemConfig(cudaSharedMemBankSizeEightByte);
-    shared_myGEMM_kernel<32> <<<grid_dims, block_dims>>> (A, B, C, *alpha, *beta, M, N, K, AT, BT);
+    shared_myGEMM_kernel <<<grid_dims, block_dims>>> (A, B, C, *alpha, *beta, M, N, K, AT, BT);
     check_launch("shared_myGEMM_kernel");
     return 0;
 }
