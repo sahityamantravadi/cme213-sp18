@@ -14,8 +14,8 @@ void device_add_one(int* d_result, int t) {
 }
 
 /*
-Just a dummy function that can be used to warm up GPU
-*/
+   Just a dummy function that can be used to warm up GPU
+ */
 int useless_gpu_add_one(int t) {
     int result;
     int* d_result;
@@ -31,16 +31,16 @@ int useless_gpu_add_one(int t) {
     std::cout << "device_add_one took: " << time << " seconds" << std::endl;
 
     checkCudaErrors(cudaMemcpy(&result, d_result, 1 * sizeof(int),
-                               cudaMemcpyDeviceToHost));
+                cudaMemcpyDeviceToHost));
     return result;
 }
 
 /* GPU kernel for in-place GEMM operation */
 __global__
 void myGEMM_kernel(double* A, double* B, double* C,
-                   double alpha, double beta,
-                   int M, int N, int K,
-                   bool AT, bool BT) {
+        double alpha, double beta,
+        int M, int N, int K,
+        bool AT, bool BT) {
     int row = blockIdx.x * blockDim.x + threadIdx.x;
     int col = blockIdx.y * blockDim.y + threadIdx.y;
 
@@ -49,7 +49,6 @@ void myGEMM_kernel(double* A, double* B, double* C,
         double dot_prod = 0.0;
         int a_ind;
         int b_ind;
-#pragma unroll
         for(int i = 0; i < K; i++) {
             if (AT)
                 a_ind = (row*K) + i;
@@ -66,16 +65,17 @@ void myGEMM_kernel(double* A, double* B, double* C,
 }
 
 /*
-Routine to perform an in-place GEMM operation, i.e., C := alpha*A*B + beta*C
-*/
+   Routine to perform an in-place GEMM operation, i.e., C := alpha*A*B + beta*C
+ */
+/*
 int myGEMM(double* A, double* B, double* C,
-           double* alpha, double* beta,
-           int M, int N, int K,
-           bool AT, bool BT) {
+        double* alpha, double* beta,
+        int M, int N, int K,
+        bool AT, bool BT) {
     unsigned int num_threads = 192;
     unsigned int thr_x = 32;
     unsigned int thr_y = (num_threads + thr_x - 1) / thr_x;
-    
+
     dim3 threads(thr_x, thr_y);
 
     unsigned int blk_x = (M + thr_x - 1) / thr_x;
@@ -86,14 +86,15 @@ int myGEMM(double* A, double* B, double* C,
     check_launch("myGEMM_kernel");
     return 0;
 }
+*/
 
-
+/* GPU kernel to perform in-place GEMM operation using shared memory */
 __global__
-void shared_myGEMM_kernel(double* __restrict__ A, double* __restrict__ B, double* __restrict__ C,
-                          double alpha, double beta,
-                          int M, int N, int K) {
-    int y_block = blockIdx.y;
-    int x_block = blockIdx.x;
+void sGEMM_kernel(double* __restrict__ A, double* __restrict__ B, double* __restrict__ C,
+                  double alpha, double beta,
+                  int M, int N, int K) {
+    int blk_col = blockIdx.y;
+    int blk_row = blockIdx.x;
     int col = threadIdx.y;
     int row = threadIdx.x;
     __shared__ double A_shared[BLOCK_SIZE][BLOCK_SIZE + 1];
@@ -105,7 +106,7 @@ void shared_myGEMM_kernel(double* __restrict__ A, double* __restrict__ B, double
     for (unsigned int i = 0; i < i_lim; ++i) {
         //fill in shared memory
         if ((BLOCK_SIZE * i) < (K - col)) {
-            double *A_part = A + (M * BLOCK_SIZE * i + BLOCK_SIZE * x_block);
+            double *A_part = A + (M * BLOCK_SIZE * i + BLOCK_SIZE * blk_row);
             unsigned int a_ind = (col * M) + row;
             A_shared[row][col] = A_part[a_ind];
         }
@@ -114,7 +115,7 @@ void shared_myGEMM_kernel(double* __restrict__ A, double* __restrict__ B, double
         }
 
         if ((BLOCK_SIZE * i) < (K - row)) {
-            double *B_part = B + (K * BLOCK_SIZE * y_block + BLOCK_SIZE * i);
+            double *B_part = B + (K * BLOCK_SIZE * blk_col + BLOCK_SIZE * i);
             unsigned int b_ind = (col * K) +  row;
             B_shared[row][col] = B_part[b_ind];
         }
@@ -125,66 +126,6 @@ void shared_myGEMM_kernel(double* __restrict__ A, double* __restrict__ B, double
         __syncthreads();
 
         //matrix multiplication
-#pragma unroll
-        for (unsigned int j = 0; j < BLOCK_SIZE; ++j) {
-            C_aggr += A_shared[row][j] * B_shared[j][col];
-        }
-
-        __syncthreads();
-    }
-
-    C_aggr *= alpha;
-
-    //copy memory back
-    int cur_col = BLOCK_SIZE * y_block + col;
-    int cur_row = BLOCK_SIZE * x_block + row;
-    if ((cur_col < N) && (cur_row < M)) {
-        double *C_shared = C + (M * BLOCK_SIZE * y_block + BLOCK_SIZE * x_block);
-        unsigned int c_ind = row + col * M;
-        C_aggr += beta * C_shared[c_ind];
-        C_shared[c_ind] = C_aggr;
-    }
-}
-
-__global__
-void shared_myGEMM_AT_kernel(double* __restrict__ A, double* __restrict__ B, double* __restrict__ C,
-                          double alpha, double beta,
-                          int M, int N, int K) {
-    int blk_row = blockIdx.y;
-    int blk_col = blockIdx.x;
-    int row = threadIdx.y;
-    int col = threadIdx.x;
-    __shared__ double A_shared[BLOCK_SIZE][BLOCK_SIZE + 1];
-    __shared__ double B_shared[BLOCK_SIZE][BLOCK_SIZE + 1];
-
-    double C_aggr = 0.0;
-    unsigned int i_lim = (K + BLOCK_SIZE - 1)/BLOCK_SIZE;
-#pragma unroll
-    for (unsigned int i = 0; i < i_lim; ++i) {
-        //fill in shared memory
-        double *A_part = A + (K * BLOCK_SIZE * blk_row + BLOCK_SIZE * i);
-        double *B_part = B + (K * BLOCK_SIZE * blk_col + BLOCK_SIZE * i);
-
-        if ((BLOCK_SIZE * i) < (K - col)) {
-            unsigned int a_ind = (row * K) + col;
-            A_shared[row][col] = A_part[a_ind];
-        }
-        else {
-            A_shared[row][col] = 0.0;
-        }
-
-        if ((BLOCK_SIZE * i) < (K - row)) {
-            unsigned int b_ind = (col * K) +  row;
-            B_shared[row][col] = B_part[b_ind];
-        }
-        else{
-            B_shared[row][col] = 0.0;
-        }
-
-        __syncthreads();
-
-        //matrix multiplication
-#pragma unroll
         for (unsigned int j = 0; j < BLOCK_SIZE; ++j) {
             C_aggr += A_shared[row][j] * B_shared[j][col];
         }
@@ -199,64 +140,6 @@ void shared_myGEMM_AT_kernel(double* __restrict__ A, double* __restrict__ B, dou
     int cur_row = BLOCK_SIZE * blk_row + row;
     if ((cur_col < N) && (cur_row < M)) {
         double *C_shared = C + (M * BLOCK_SIZE * blk_col + BLOCK_SIZE * blk_row);
-        unsigned int c_ind = (col * M) + row;
-        C_aggr += beta * C_shared[c_ind];
-        C_shared[c_ind] = C_aggr;
-    }
-}
-
-__global__
-void shared_myGEMM_BT_kernel(double* __restrict__ A, double* __restrict__ B, double* __restrict__ C,
-                          double alpha, double beta,
-                          int M, int N, int K) {
-    int y_block = blockIdx.y;
-    int x_block = blockIdx.x;
-    int col = threadIdx.y;
-    int row = threadIdx.x;
-    __shared__ double A_shared[BLOCK_SIZE][BLOCK_SIZE + 1];
-    __shared__ double B_shared[BLOCK_SIZE][BLOCK_SIZE + 1];
-
-    double C_aggr = 0.0;
-    unsigned int i_lim = (K + BLOCK_SIZE - 1)/BLOCK_SIZE;
-#pragma unroll
-    for (unsigned int i = 0; i < i_lim; ++i) {
-        //fill in shared memory
-        if ((BLOCK_SIZE * i) < (K - col)) {
-            double *A_part = A + (M * BLOCK_SIZE * i + BLOCK_SIZE * x_block);
-            unsigned int a_ind = (col * M) + row;
-            A_shared[row][col] = A_part[a_ind];
-        }
-        else {
-            A_shared[row][col] = 0.0;
-        }
-
-        if ((BLOCK_SIZE * i) < (K - row)) {
-            double *B_part = B + (N * BLOCK_SIZE * i + BLOCK_SIZE * y_block);
-            unsigned int b_ind = (row * N) + col;
-            B_shared[row][col] = B_part[b_ind];
-        }
-        else{
-            B_shared[row][col] = 0.0;
-        }
-
-        __syncthreads();
-
-        //matrix multiplication
-#pragma unroll
-        for (unsigned int j = 0; j < BLOCK_SIZE; ++j) {
-            C_aggr += A_shared[row][j] * B_shared[j][col];
-        }
-
-        __syncthreads();
-    }
-
-    C_aggr *= alpha;
-
-    //copy memory back
-    int cur_col = BLOCK_SIZE * y_block + col;
-    int cur_row = BLOCK_SIZE * x_block + row;
-    if ((cur_col < N) && (cur_row < M)) {
-        double *C_shared = C + (M * BLOCK_SIZE * y_block + BLOCK_SIZE * x_block);
         unsigned int c_ind = row + col * M;
         C_aggr += beta * C_shared[c_ind];
         C_shared[c_ind] = C_aggr;
@@ -264,47 +147,154 @@ void shared_myGEMM_BT_kernel(double* __restrict__ A, double* __restrict__ B, dou
 }
 
 
-/* Routine to perform shared GEMM operation */
-/* int myGEMM(double *A, double *B, double *C,
-           double *alpha, double *beta,
+/* GPU kernel to perform in-place GEMM operation using shared memory with A transpose */
+__global__
+void sGEMM_AT_kernel(double* __restrict__ A, double* __restrict__ B, double* __restrict__ C,
+                     double alpha, double beta,
+                     int M, int N, int K) {
+    int blk_row = blockIdx.y;
+    int blk_col = blockIdx.x;
+    int row = threadIdx.y;
+    int col = threadIdx.x;
+
+    __shared__ double A_shared[BLOCK_SIZE][BLOCK_SIZE+1];
+    __shared__ double B_shared[BLOCK_SIZE][BLOCK_SIZE+1];
+
+    double C_aggr = 0;
+    unsigned int i_lim = (K + BLOCK_SIZE - 1) /  BLOCK_SIZE;
+#pragma unroll
+    for (int i = 0; i < i_lim; ++i) {
+        // fill in shared memory
+        if(BLOCK_SIZE * i < K - col) {
+            double* A_part = A + (K * BLOCK_SIZE * blk_row + BLOCK_SIZE * i);
+            unsigned int a_ind = (row * K) + col;
+            A_shared[row][col] = A_part[a_ind];
+        }
+        else
+            A_shared[row][col] = 0;    
+
+        if(BLOCK_SIZE * i < K - row) {
+            double* B_part = B + (K * BLOCK_SIZE * blk_col + BLOCK_SIZE * i);
+            unsigned int b_ind = (col * K) + row;
+            B_shared[row][col] = B_part[b_ind];
+        }
+        else
+            B_shared[row][col] = 0;
+
+        __syncthreads();
+        
+        //matrix multiplication
+        for (int j = 0; j < BLOCK_SIZE; ++j)
+            C_aggr += A_shared[row][j] * B_shared[j][col];
+        __syncthreads();
+    }
+
+    C_aggr *= alpha;
+
+    int cur_col = BLOCK_SIZE * blk_col + col;
+    int cur_row = BLOCK_SIZE * blk_row + row;
+    if((cur_col < N) && (cur_row < M)){
+        double* C_part = C + (M * BLOCK_SIZE * blk_col + BLOCK_SIZE * blk_row);
+        unsigned int c_ind = col * M + row;
+        C_aggr += beta * C_part[c_ind];
+        C_part[c_ind] = C_aggr;
+    }
+}
+
+/* GPU kernel to perform in-place GEMM operation using shared memory with B transpose */
+__global__
+void sGEMM_BT_kernel(double* __restrict__ A, double* __restrict__ B, double* __restrict__ C,
+                     double alpha, double beta,
+                     int M, int N, int K) {
+    int blk_row = blockIdx.x;
+    int blk_col = blockIdx.y;
+    int row = threadIdx.x;
+    int col = threadIdx.y;
+
+    __shared__ double A_shared[BLOCK_SIZE][BLOCK_SIZE+1];
+    __shared__ double B_shared[BLOCK_SIZE][BLOCK_SIZE+1];
+
+    double C_aggr = 0;
+    unsigned int i_lim = (K + BLOCK_SIZE - 1) /  BLOCK_SIZE;
+#pragma unroll
+    for (int i = 0; i < i_lim; ++i) {
+        // fill in shared memory
+        if(BLOCK_SIZE * i < K - col) {
+            double* A_part = A + (M * BLOCK_SIZE * i + BLOCK_SIZE * blk_row);
+            unsigned int a_ind = (col * M) + row;
+            A_shared[row][col] = A_part[a_ind];
+        }
+        else
+            A_shared[row][col] = 0;    
+
+        if(BLOCK_SIZE * i < K - row) {
+            double* B_part = B + (N * BLOCK_SIZE * i + BLOCK_SIZE * blk_col);
+            unsigned int b_ind = (row * N) + col;
+            B_shared[row][col] = B_part[b_ind];
+        }
+        else
+            B_shared[row][col] = 0;
+
+        __syncthreads();
+        
+        //matrix multiplication
+        for (int j = 0; j < BLOCK_SIZE; ++j)
+            C_aggr += A_shared[row][j] * B_shared[j][col];
+        __syncthreads();
+    }
+
+    C_aggr *= alpha;
+
+    int cur_col = BLOCK_SIZE * blk_col + col;
+    int cur_row = BLOCK_SIZE * blk_row + row;
+    if((cur_col < N) && (cur_row < M)){
+        double* C_part = C + (M * BLOCK_SIZE * blk_col + BLOCK_SIZE * blk_row);
+        unsigned int c_ind = col * M + row;
+        C_aggr += beta * C_part[c_ind];
+        C_part[c_ind] = C_aggr;
+    }
+}
+
+/* Routine to run in-place GEMM operation */
+int myGEMM(double* A, double* B, double* C,
+           double* alpha, double* beta,
            int M, int N, int K,
            bool AT, bool BT) {
-    dim3 block_dims (BLOCK_SIZE, BLOCK_SIZE);
-   if (AT) {
-       int blk_x = (N + block_dims.x - 1)/block_dims.x;
-       int blk_y = (M + block_dims.y - 1)/block_dims.y;
-       
-       dim3 grid_dims (blk_x, blk_y);
-       
-       cudaDeviceSetSharedMemConfig(cudaSharedMemBankSizeEightByte);
-  
-       shared_myGEMM_AT_kernel <<<grid_dims, block_dims>>> (A, B, C, *alpha, *beta, M, N, K);
-       check_launch("shared_myGEMM_AT_kernel");
+    if (AT){
+        dim3 block_dims(BLOCK_SIZE, BLOCK_SIZE);
+        int blk_x = ceil((double) N/ (double) block_dims.x);
+        int blk_y = ceil((double) M/ (double) block_dims.y);
+        dim3 grid_dims(blk_x, blk_y);
+
+        cudaDeviceSetSharedMemConfig(cudaSharedMemBankSizeEightByte);
+
+        sGEMM_AT_kernel<<<grid_dims, block_dims>>>(A, B, C, *alpha, *beta, M, N, K);
+        check_launch("sGEMM_AT_kernel");
     }
     else if (BT) {
+        dim3 block_dims(BLOCK_SIZE, BLOCK_SIZE);
         int blk_x = (M + block_dims.x - 1)/block_dims.x;
         int blk_y = (N + block_dims.y - 1)/block_dims.y;
         dim3 grid_dims (blk_x, blk_y);
-        
+
         cudaDeviceSetSharedMemConfig(cudaSharedMemBankSizeEightByte);
- 
-        shared_myGEMM_BT_kernel <<<grid_dims, block_dims>>> (A, B, C, *alpha, *beta, M, N, K);
-        check_launch("shared_myGEMM_BT_kernel");
+
+        sGEMM_BT_kernel <<<grid_dims, block_dims>>> (A, B, C, *alpha, *beta, M, N, K);
+        check_launch("sGEMM_BT_kernel");    
     }
     else{
+        dim3 block_dims(BLOCK_SIZE, BLOCK_SIZE);
         int blk_x = (M + block_dims.x - 1)/block_dims.x;
         int blk_y = (N + block_dims.y - 1)/block_dims.y;
         dim3 grid_dims (blk_x, blk_y);
-        
+
         cudaDeviceSetSharedMemConfig(cudaSharedMemBankSizeEightByte);
- 
-        shared_myGEMM_kernel <<<grid_dims, block_dims>>> (A, B, C, *alpha, *beta, M, N, K);
-        check_launch("shared_myGEMM_kernel");
+
+        sGEMM_kernel <<<grid_dims, block_dims>>> (A, B, C, *alpha, *beta, M, N, K);
+        check_launch("sGEMM_kernel");
     }
     return 0;
 }
-*/
-
 
 /* GPU kernel for 10-class softmax */
 __global__
@@ -313,11 +303,11 @@ void gpuSoftmax_kernel(double* A, unsigned int num_classes, unsigned int N) {
 
     if (col < N) {
         double denominator = 0.0;
-#pragma unroll
+
         for(int c = 0; c < num_classes; c++){
             denominator += (double) std::exp(A[col*num_classes + c]);
         }
-#pragma unroll
+
         for(int c = 0; c < num_classes; c++){
             int ij = c + (col * num_classes);
             A[ij] = (double) std::exp(A[ij])/ (double) denominator;
@@ -372,7 +362,6 @@ void gpuRowSum_kernel(double *A, double *v, int M, int N) {
 
     if (row < M) {
         double rowSum = 0.0;
-#pragma unroll
         for (int i = 0; i < N; i++) 
             rowSum += A[(M*i) + row];
         v[row] = rowSum;
@@ -421,11 +410,11 @@ void gpuMatVecSum(double *A, double *v, int M, int N) {
 /* GPU kernel for elementwise matrix sum */
 __global__
 void gpuElementwiseSum_kernel(double *A, double *B, double *C,
-                              double alpha, double beta,
-                              int M, int N) {
+        double alpha, double beta,
+        int M, int N) {
     int col = blockIdx.x * blockDim.x + threadIdx.x;
     int row = blockIdx.y * blockDim.y + threadIdx.y;
-    
+
     if (row < M && col < N) {
         int ind = row + (M*col);
         C[ind] = (alpha * A[ind]) + (beta * B[ind]);
@@ -434,8 +423,8 @@ void gpuElementwiseSum_kernel(double *A, double *B, double *C,
 
 /* Routine for elementwise matrix sum */
 void gpuElementwiseSum(double *A, double *B, double *C, 
-                       double alpha, double beta,
-                       int M, int N) {
+        double alpha, double beta,
+        int M, int N) {
     unsigned int num_threads = 192;
     unsigned int thr_x = 32;
     unsigned int thr_y = (num_threads + thr_x - 1) / thr_x;
@@ -475,3 +464,6 @@ void gpudSigmoid(double *A, double *B, double *C, int M, int N) {
     gpudSigmoid_kernel<<< blocks, threads >>>(A, B, C, M, N);
     check_launch("gpudSigmoid");
 }
+
+
+
